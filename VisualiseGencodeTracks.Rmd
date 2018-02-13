@@ -1,0 +1,260 @@
+---
+title: "Visualise Gencode Tracks"
+author: Federico Agostini
+output:
+  github_document:
+    fig_width: 12
+    fig_height: 5
+    pandoc_args: [
+      "--output=README.md"
+    ] 
+---
+
+```{r setupEnv, include=FALSE}
+working.folder = "/Users/agostif/Documents/GitHub/Visualise_Gencode_Tracks"
+
+knitr::opts_knit$set(root.dir = working.folder)
+knitr::opts_chunk$set(echo = FALSE)
+
+setwd(working.folder)
+
+species = "Mus musculus" # or 'Homo sapiens' for mouse
+genome = "mm10" # or hg38 for mouse
+version = "M14" # or 27 for mouse
+```
+
+## To-Do
+
+  - Merge annotation and track plots
+  - Add the option for differential track colours/fills
+  - Improve the annotation (e.g., mark UTRs and coding/non-coding genes)
+
+## Setup
+
+```{r sessionInfo, echo=FALSE}
+cat(sessionInfo()$R.version$version.string, fill=TRUE)
+cat(paste("Platform", sessionInfo()$platform), fill=TRUE)
+cat(paste("Running under", sessionInfo()$running), fill=TRUE)
+cat(paste("Last knitted on", date()), fill=TRUE)
+cat(paste("Working directory set to", getwd()), fill=TRUE)
+cat(paste("Species: ", species), fill=TRUE)
+cat(paste("Genome assembly:", genome), fill=TRUE)
+cat(paste("Gencode version:", version), fill=TRUE)
+```
+
+If any of the information above does not suit your needs, please review it in the 'setup' chunk  and re-run the script.
+
+```{r loadPackages, message=FALSE, results="hide"}
+require("ggplot2")
+require("cowplot")
+require("ggthemes")
+require("data.table")
+require("GenomicFeatures")
+require("rtracklayer")
+require("zoo")
+```
+
+
+```{r}
+region = GRanges("chr7", IRanges(142759759, 143749117))
+region.pl = as.data.table(region)
+
+minimal.unit = width(region)/100
+```
+
+```{r downloadGencode, results="hide", message=FALSE, warning=FALSE}
+getTxDb <- function(species, genome, version){
+   if( species %in% "Homo sapiens" ){
+      if( !file.exists(paste0("gencode.v", version, ".annotation.gff3.gz")) )
+         download.file(paste0("ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_human/release_", version, "/gencode.v", version, ".annotation.gff3.gz"),
+                       paste0("gencode.v", version, ".annotation.gff3.gz"), quiet = TRUE)
+   }else{
+      if( !file.exists(paste0("gencode.v", version, ".annotation.gff3.gz")) )
+         download.file(paste0("ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_mouse/release_", version, "/gencode.v", version, ".annotation.gff3.gz"),
+                       paste0("gencode.v", version, ".annotation.gff3.gz"), quiet = TRUE)
+   }
+   
+   if( !file.exists(paste0("gencode.v", version, ".annotation.sqlite")) ){
+      TxDb = makeTxDbFromGFF(file = paste0("gencode.v", version, ".annotation.gff3.gz"),
+                             format = "gff3",
+                             dataSource = paste("Gencode version", version),
+                             organism = species)
+      saveDb(TxDb, file=paste0("gencode.v", version, ".annotation.sqlite"))
+   }
+   return(loadDb(paste0("gencode.v", version, ".annotation.sqlite")))
+}
+
+# TxDb = getTxDb(species, genome, version)
+```
+
+```{r setGeneLevels}
+createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, version){
+   if( is.null(TxDb) )
+      TxDb = getTxDb(species, genome, version)
+   
+   genes = genes(TxDb)
+   genes = genes[!grepl("PAR", names(genes)),]
+   
+   exons = exonsBy(TxDb, by="gene")
+   exons = exons[!grepl("PAR", names(exons)),]
+   
+   genes = genes[overlapsAny(genes, region),]
+   
+   genes = genes[order(width(genes), decreasing=TRUE),]
+   
+   exons = reduce(exons[names(exons)%in%names(genes)], min.gapwidth=min.unit/10)
+   
+   genes$Y = as.numeric(NA)
+   exons = lapply(exons,
+                  function(x){
+                     x$Y = as.numeric(NA);
+                     x
+                  })
+   
+   if( !identical(names(genes), names(exons)) )
+      exons = exons[match(names(genes), names(exons))]
+   
+   overlaps = as.data.table(findOverlaps(genes, ignore.strand=TRUE))[!queryHits==subjectHits,]
+   
+   level = 0 
+   genes[which(!seq_along(exons)%in%overlaps[, queryHits]),]$Y = level
+   for( i in which(!seq_along(exons)%in%overlaps[, queryHits]) )
+      exons[[i]]$Y = level 
+   
+   while( nrow(overlaps)>0 ){
+      temp = copy(overlaps)
+      temp = split(temp, temp[,queryHits])
+      
+      for( i in names(temp) ){
+         if( i%in%names(temp) ){
+            temp = temp[!names(temp)%in%as.character(temp[[i]][, subjectHits])]
+         }
+      }
+      genes[as.numeric(names(temp)),]$Y = level
+      for( i in as.numeric(names(temp)) )
+         exons[[i]]$Y = level
+      
+      overlaps = overlaps[!queryHits%in%as.numeric(names(temp)),]
+      level = level-0.25
+   }
+   
+   myList = list()
+   myList[["Genes"]] = data.table(as.data.frame(genes), key="gene_id")
+   myList[["Exons"]] = rbindlist(lapply(exons, as.data.table), idcol="gene")
+   
+   arrows.pl = genes[width(genes)>minimal.unit,]
+   arrows.pl = split(arrows.pl, names(arrows.pl))
+   arrows.pl = lapply(arrows.pl, function(x) data.table(as.data.frame(tile(x, width=minimal.unit))))
+   arrows.pl = rbindlist(arrows.pl, idcol="gene_id")
+   setkey(arrows.pl, gene_id)
+   myList[["Arrows"]] = arrows.pl[myList[["Genes"]], Y := i.Y]
+   
+   myList[["Genes"]] = myList[["Genes"]][!is.na(Y)]
+   myList[["Exons"]] = myList[["Exons"]][!is.na(Y)]
+   myList[["Arrows"]] = myList[["Arrows"]][!is.na(Y)]
+   
+   return(myList)
+}
+
+# anno.pl = createAnnoTrack(TxDb, region, min.unit=minimal.unit, species, genome, version)
+```
+
+```{r blankTheme}
+theme_blank <- function(...) {
+  ret <- theme_bw(...)
+  ret$line <- element_blank()
+  ret$rect <- element_blank()
+  ret$strip.text <- element_blank()
+  ret$axis.text <- element_blank()
+  ret$plot.title <- element_blank()
+  ret$axis.title <- element_blank()
+  # ret$plot.margin <- structure(c(0, 0, -1, -1), unit = "lines", valid.unit = 3L, class = "unit")
+  ret
+}
+```
+
+```{r}
+plotanno <- function(data=list(), reg.range=NULL, gene.height = 1, colorVar="grey30", clean=FALSE){
+   writeLines("This is my wrapper")
+   plot <- ggplot() +
+      geom_segment(data=data[["Arrows"]][strand=="+"], mapping=aes(x=start, xend=end, y=Y, yend=Y), colour=colorVar, arrow = arrow(length = unit(0.1, "cm"), type="closed")) +
+      geom_segment(data=data[["Arrows"]][strand=="-"], mapping=aes(x=end, xend=start, y=Y, yend=Y), colour=colorVar, arrow = arrow(length = unit(0.1, "cm"), type="closed")) +
+      geom_segment(data=data[["Genes"]], mapping=aes(x=start, xend=start, y=Y-(0.05*gene.height)/2, yend=Y+(0.05*gene.height)/2), colour=colorVar, lineend="square") +
+      geom_segment(data=data[["Genes"]], mapping=aes(x=end,   xend=end,   y=Y-(0.05*gene.height)/2, yend=Y+(0.05*gene.height)/2), colour=colorVar, lineend="square") + 
+      geom_rect(data=data[["Exons"]], mapping=aes(xmin=start, xmax=end, ymin=Y-(0.05*gene.height), ymax=Y+(0.05*gene.height), fill=as.factor(1))) +
+      coord_cartesian(xlim=reg.range) +
+      scale_fill_tableau() + scale_colour_tableau() +
+      theme_few() + theme(axis.title.x=element_blank(), axis.text.y=element_blank(), axis.title.y=element_blank(), axis.ticks.y=element_blank()) + guides(fill=FALSE, colour=FALSE) 
+   if( clean )
+      plot = plot + theme_blank()
+   print(plot)
+   return(plot)
+}
+
+# pl = plotanno(anno.pl, range(region.pl[, list(start, end)]))
+```
+
+
+```{r}
+files = "/Users/agostif/Downloads/Kcnq1ot1_fin.25K_Control.bed"
+
+createTracks <- function(files, track.names=NULL, region, use.smooth=TRUE, win.smooth=1001){
+   
+   bed = lapply(files, import)
+   
+   bed = lapply(bed,
+                function(x)
+                   subsetByOverlaps(x, resize(region, width(region)+2.5e3, fix="center")))
+   bed = lapply(bed,
+                function(x)
+                   data.table(as.data.frame(coverage(x))))
+   for( i in seq_along(bed) ){
+      bed[[i]][, `:=`(index = seq_along(value), group=NULL, group_name=NULL)]
+      setkey(bed[[i]], index)
+   }
+   
+   reg = data.table(as.data.frame(coverage(resize(region, width(region)+2.5e3, fix="center"))))
+   reg[, `:=`(index = seq_along(value), group=NULL, group_name=NULL)]
+   setkey(reg, index)
+   
+   bed = lapply(bed,
+                function(x)
+                   x[reg,][, value := sum(value, i.value, na.rm=TRUE), by="index"][, i.value := NULL])
+   
+   bed = lapply(bed, 
+                function(x){
+                   if( use.smooth ){
+                      x[, smooth := rollmean(value-1, k = win.smooth, fill = NA)]
+                   }else{
+                      x[, smooth := value-1]
+                   }
+                   x = x[index>=start(region) & index<=end(region)]
+                   
+                   x[, i.next :=  data.table::shift(smooth, type="lag")]
+                   x[, i.prev :=  data.table::shift(smooth, type="lead")]
+                   x = x[smooth!=i.next | smooth!=i.prev | is.na(i.next) | is.na(i.prev)]
+                   x[, `:=`(i.next=NULL, i.prev=NULL)]
+                })
+   
+   names(bed) = track.names
+   
+   ggl = lapply(seq_along(bed),
+                function(x)
+                   ggplot(bed[[x]], aes(x=index, y=smooth)) +
+                   geom_area(alpha=0.8, aes(fill=as.factor(1))) +
+                   scale_y_continuous("Average coverage") +
+                   coord_cartesian(xlim=c(region.pl[, start], region.pl[, end])) +
+                   scale_colour_solarized("red") +
+                   annotate("text", x = Inf, y = Inf, label = names(bed)[[i]], hjust = 2, vjust = 3, parse = TRUE) + 
+                   theme_few() + theme(axis.text.x=element_blank(), axis.title.x=element_blank(), axis.ticks.x=element_blank()) + guides(fill=FALSE, colour=FALSE)
+                )
+   
+   print(plot_grid(plotlist=ggl, nrow=length(ggl), axis="lr", align="v", rel_heights=rep(1,length(ggl))))
+   
+   return(ggl)
+}
+
+# ggl = createTracks(files, region, use.smooth=FALSE)
+
+# plot_grid(plotlist=c(ggl, pl), nrow=length(ggl)+1, axis="lr", align="v", rel_heights=c(rep(1, length(ggl)), 0.3))
+```
