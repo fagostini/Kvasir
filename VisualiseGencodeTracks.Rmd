@@ -54,13 +54,20 @@ require("rtracklayer")
 require("zoo")
 ```
 
+### Case study
 
-```{r}
-region = GRanges("chr7", IRanges(142759759, 143749117))
+A region of ~90Kb covering the Xist gene locus is here used as example.
+
+```{r example}
+region = GRanges("chrX", IRanges(103410303, 103509084))
 region.pl = as.data.table(region)
 
 minimal.unit = width(region)/100
 ```
+
+## Gencode Annotation (GFF3)
+
+If it not not present in the working folder, the pipeline will download the __Comprehensive gene annotation__ from Gencode and create a local database.
 
 ```{r downloadGencode, results="hide", message=FALSE, warning=FALSE}
 getTxDb <- function(species, genome, version){
@@ -84,8 +91,12 @@ getTxDb <- function(species, genome, version){
    return(loadDb(paste0("gencode.v", version, ".annotation.sqlite")))
 }
 
-# TxDb = getTxDb(species, genome, version)
+TxDb = getTxDb(species, genome, version)
 ```
+
+## Annotation track
+
+Genic and exonic features are extracted from the database, ranked by size (larger on top) and distributed over different levels to prevent overlaps.
 
 ```{r setGeneLevels}
 createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, version){
@@ -156,7 +167,7 @@ createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, ve
    return(myList)
 }
 
-# anno.pl = createAnnoTrack(TxDb, region, min.unit=minimal.unit, species, genome, version)
+anno.pl = createAnnoTrack(TxDb, region, min.unit=minimal.unit, species, genome, version)
 ```
 
 ```{r blankTheme}
@@ -175,7 +186,6 @@ theme_blank <- function(...) {
 
 ```{r}
 plotanno <- function(data=list(), reg.range=NULL, gene.height = 1, colorVar="grey30", clean=FALSE){
-   writeLines("This is my wrapper")
    plot <- ggplot() +
       geom_segment(data=data[["Arrows"]][strand=="+"], mapping=aes(x=start, xend=end, y=Y, yend=Y), colour=colorVar, arrow = arrow(length = unit(0.1, "cm"), type="closed")) +
       geom_segment(data=data[["Arrows"]][strand=="-"], mapping=aes(x=end, xend=start, y=Y, yend=Y), colour=colorVar, arrow = arrow(length = unit(0.1, "cm"), type="closed")) +
@@ -191,9 +201,14 @@ plotanno <- function(data=list(), reg.range=NULL, gene.height = 1, colorVar="gre
    return(plot)
 }
 
-# pl = plotanno(anno.pl, range(region.pl[, list(start, end)]))
+png("img/annotation_track.png", res=300, units="in", width=16, height=4)
+   pl = plotanno(anno.pl, range(region.pl[, list(start, end)]))
+dev.off()
 ```
 
+#### Figure 1: Annotation track visualisation
+
+![](img/annotation_track.png)
 
 ```{r}
 files = "/Users/agostif/Downloads/Kcnq1ot1_fin.25K_Control.bed"
