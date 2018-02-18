@@ -100,9 +100,14 @@ Genic and exonic features are extracted from the database, ranked by size (large
 
 ```{r setGeneLevels}
 createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, version){
-   if( is.null(TxDb) )
+
+   message("Check the annotation...")
+   if( is.null(TxDb) ){
+      message("Annotation not found. Download GFF...")
       TxDb = getTxDb(species, genome, version)
+   }
    
+   message("Extract features...")
    genes = genes(TxDb)
    genes = genes[!grepl("PAR", names(genes)),]
    
@@ -115,6 +120,7 @@ createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, ve
    
    exons = reduce(exons[names(exons)%in%names(genes)], min.gapwidth=min.unit/10)
    
+   message("Apply layering...")
    genes$Y = as.numeric(NA)
    exons = lapply(exons,
                   function(x){
@@ -149,13 +155,14 @@ createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, ve
       level = level-0.25
    }
    
+   message("Create track data...")
    myList = list()
    myList[["Genes"]] = data.table(as.data.frame(genes), key="gene_id")
    myList[["Exons"]] = rbindlist(lapply(exons, as.data.table), idcol="gene")
    
-   arrows.pl = genes[width(genes)>minimal.unit,]
+   arrows.pl = genes[width(genes)>min.unit,]
    arrows.pl = split(arrows.pl, names(arrows.pl))
-   arrows.pl = lapply(arrows.pl, function(x) data.table(as.data.frame(tile(x, width=minimal.unit))))
+   arrows.pl = lapply(arrows.pl, function(x) data.table(as.data.frame(tile(x, width=min.unit))))
    arrows.pl = rbindlist(arrows.pl, idcol="gene_id")
    setkey(arrows.pl, gene_id)
    myList[["Arrows"]] = arrows.pl[myList[["Genes"]], Y := i.Y]
@@ -164,6 +171,7 @@ createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, ve
    myList[["Exons"]] = myList[["Exons"]][!is.na(Y)]
    myList[["Arrows"]] = myList[["Arrows"]][!is.na(Y)]
    
+   message("Done")
    return(myList)
 }
 
@@ -210,16 +218,30 @@ dev.off()
 
 ![](img/annotation_track.png)
 
+
+```{r checkList}
+checkList <- function(x){
+  if(!is.list(x)){ stop("The object is not a list()", call.=FALSE); return(1) }
+  tmp = unique(sapply(x, class))
+  if(length(tmp)>1){ stop("Please provide a either a character or GRanges list", call.=FALSE); return(1) }
+  return(tmp)
+}
+```
+
 ```{r}
 files = "/Users/agostif/Downloads/Kcnq1ot1_fin.25K_Control.bed"
 
-createTracks <- function(files, track.names=NULL, region, use.smooth=TRUE, win.smooth=1001){
+createTracks <- function(x, track.names=NULL, region, use.smooth=TRUE, win.smooth=1001){
    
-   bed = lapply(files, import)
-   
+   bed = checkList(x)
+
+   bed = x
+
+   message("Subset the GRanges...")
    bed = lapply(bed,
                 function(x)
                    subsetByOverlaps(x, resize(region, width(region)+2.5e3, fix="center")))
+   message("Calculate coverage...")
    bed = lapply(bed,
                 function(x)
                    data.table(as.data.frame(coverage(x))))
@@ -228,6 +250,7 @@ createTracks <- function(files, track.names=NULL, region, use.smooth=TRUE, win.s
       setkey(bed[[i]], index)
    }
    
+   message("Add pseudo-count...")
    reg = data.table(as.data.frame(coverage(resize(region, width(region)+2.5e3, fix="center"))))
    reg[, `:=`(index = seq_along(value), group=NULL, group_name=NULL)]
    setkey(reg, index)
@@ -236,6 +259,7 @@ createTracks <- function(files, track.names=NULL, region, use.smooth=TRUE, win.s
                 function(x)
                    x[reg,][, value := sum(value, i.value, na.rm=TRUE), by="index"][, i.value := NULL])
    
+   message("Apply smooth function...")
    bed = lapply(bed, 
                 function(x){
                    if( use.smooth ){
@@ -250,22 +274,25 @@ createTracks <- function(files, track.names=NULL, region, use.smooth=TRUE, win.s
                    x = x[smooth!=i.next | smooth!=i.prev | is.na(i.next) | is.na(i.prev)]
                    x[, `:=`(i.next=NULL, i.prev=NULL)]
                 })
+   message("Remove pseudo-count...")
    
    names(bed) = track.names
    
+   message("Create plot tracks...")
    ggl = lapply(seq_along(bed),
                 function(x)
                    ggplot(bed[[x]], aes(x=index, y=smooth)) +
                    geom_area(alpha=0.8, aes(fill=as.factor(1))) +
                    scale_y_continuous("Average coverage") +
-                   coord_cartesian(xlim=c(region.pl[, start], region.pl[, end])) +
+                   coord_cartesian(xlim=range(as.data.table(region)[, list(start, end)])) +
                    scale_colour_solarized("red") +
                    annotate("text", x = Inf, y = Inf, label = names(bed)[[i]], hjust = 2, vjust = 3, parse = TRUE) + 
                    theme_few() + theme(axis.text.x=element_blank(), axis.title.x=element_blank(), axis.ticks.x=element_blank()) + guides(fill=FALSE, colour=FALSE)
                 )
    
-   print(plot_grid(plotlist=ggl, nrow=length(ggl), axis="lr", align="v", rel_heights=rep(1,length(ggl))))
+   # print(plot_grid(plotlist=ggl, nrow=length(ggl), axis="lr", align="v", rel_heights=rep(1,length(ggl))))
    
+   message("Done")
    return(ggl)
 }
 
