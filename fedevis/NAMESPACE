@@ -2,9 +2,13 @@
 
 export(checkList)
 export(createAnnoTrack)
+export(createTracks)
+export(getChrSizes)
 export(getTxDb)
 export(plotAnno)
+import(GenomeInfoDb)
 import(GenomicFeatures)
+import(cowplot)
 import(data.table)
 import(ggplot2)
 import(ggthemes)

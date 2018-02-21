@@ -2,6 +2,7 @@
 #' 
 #' The function checks if local versions of Gencode annotation GFF3 and the associated Txdb exist, otherwise it dowloads the required file and create the object. 
 #' @param species A character indicating either "Homo sapiens" or "Mus musculus".
+#' @param genome A character indicating either "Homo sapiens" or "Mus musculus".
 #' @param version A character specifying the annotation version (e.g., "27" or "M16").
 #' @return A TxDb object.
 #'
@@ -12,7 +13,7 @@
 #' TxDb = getTxDb("Homo sapiens", "27")
 #' TxDb = getTxDb("Mus musculus", "M16")
 
-getTxDb <- function(species, version){
+getTxDb <- function(species, genome, version){
 	if( !file.exists(paste0("gencode.v", version, ".annotation.sqlite")) ){
 		if( species %in% "Homo sapiens" ){
 			if( !file.exists(paste0("gencode.v", version, ".annotation.gff3.gz")) )
@@ -24,6 +25,7 @@ getTxDb <- function(species, version){
 					paste0("gencode.v", version, ".annotation.gff3.gz"), quiet = TRUE)
 		}
 		TxDb = makeTxDbFromGFF(file = paste0("gencode.v", version, ".annotation.gff3.gz"),
+			chrominfo=getChrSizes(genome),
 			format = "gff3",
 			dataSource = paste("Gencode version", version),
 			organism = species)

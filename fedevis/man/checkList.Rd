@@ -10,7 +10,7 @@ checkList(x)
 \item{x}{The object to test.}
 }
 \value{
-The List (if it passes the checks).
+The List type.
 }
 \description{
 The function checks that the input argument is a list containing either strings or GRranges.

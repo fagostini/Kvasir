@@ -4,10 +4,12 @@
 \alias{getTxDb}
 \title{Create TxDb object function}
 \usage{
-getTxDb(species, version)
+getTxDb(species, genome, version)
 }
 \arguments{
 \item{species}{A character indicating either "Homo sapiens" or "Mus musculus".}
+
+\item{genome}{A character indicating either "Homo sapiens" or "Mus musculus".}
 
 \item{version}{A character specifying the annotation version (e.g., "27" or "M16").}
 }

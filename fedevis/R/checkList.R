@@ -2,7 +2,7 @@
 #' 
 #' The function checks that the input argument is a list containing either strings or GRranges. 
 #' @param x The object to test.
-#' @return The List (if it passes the checks).
+#' @return The List type.
 #'
 #' @export
 #' @examples
