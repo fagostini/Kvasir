@@ -1,48 +1,112 @@
 ---
-title: "Visualise Gencode Tracks"
+title: "Visualise NGS Data Tracks"
 author: Federico Agostini
 output:
   github_document:
+    html_preview: false
     fig_width: 12
     fig_height: 5
     pandoc_args: [
-      "--output=README.md"
+    "--output=README.md"
     ] 
 ---
 
-```{r setupEnv, include=FALSE}
-working.folder = "/Users/agostif/Documents/GitHub/Visualise_Gencode_Tracks"
+## Getting Started
+
+These instructions will get you a copy of the project up and running on your local machine for usage, development or testing purposes. See deployment for notes on how to deploy the project on a live system.
+
+### Prerequisities
+
+A pre-installed version of R (>= 3.4.3), which can be downloaded from [here](https://cran.ma.imperial.ac.uk/) or [here](https://mirrors.ebi.ac.uk/CRAN/).
+
+### Install from source
+
+The aim of _devtools_ is to make your life as a package developer easier by providing R functions that simplify many common tasks. _devtools_ is opinionated about how to do package development, and requires that you use _roxygen2_ for documentation:
+
+```{r, eval=FALSE}
+require(devtools)
+require(roxygen2)
+```
+
+Converts roxygen comments to _.Rd_ files
+
+```{r, eval=FALSE}
+roxygenise()
+```
+
+Builds a package file from package sources
+
+```{r, eval=FALSE}
+build()
+```
+
+[Optional] Updates the documentation, then builds and checks the package
+
+```{r, eval=FALSE}
+check()
+```
+
+Reinstalls the package, detaches the currently loaded version then reloads the new version with _library()_.
+
+```{r, eval=FALSE}
+install()
+```
+
+### Install from repository
+
+Install the _devtools_ package and load it
+
+```{r, eval=FALSE}
+install.packages("devtools")
+library(devtools)
+```
+
+__[Option 1]__ Use _install_github("author/package")_. For example, with this fagostini/Kvasir package, which exists at github.com/fagostini/Kvasir
+
+```{r, eval=FALSE}
+install_github("fagostini/Kvasir")
+library(Kvasir)
+```
+
+__[Option 2]__ Use _install.packages()_
+
+```{r, eval=FALSE}
+install.packages(path_to_file, repos = NULL, type="source")
+```
+
+There's some extra fanciness that you need to do if the version you want sits on some branch of the repository, if the package is in a subdirectory of the main repository, or if the package is a private repository.
+
+For example, to install a private repository you should provide the _install_github()_ with your authentication credentials.
+
+```{r, eval=FALSE}
+install_github("fagostini/Kvasir", auth_user=username, password=password)
+```
+
+### To-Do
+
+  - Merge annotation and data tracks (presently, the user has to merge the plots)
+  - Add the option for differential track colours/fills
+  - Improve the annotation (e.g. mark UTRs and coding/non-coding genes)
+
+---
+
+## Case study
+
+Human HNRNPC binding to a region on chromosomes 14.
+
+### Setup
+
+```{r setupEnv, include=FALSE, echo=FALSE}
+working.folder = "./"
 
 knitr::opts_knit$set(root.dir = working.folder)
-knitr::opts_chunk$set(echo = FALSE)
 
 setwd(working.folder)
 
-species = "Mus musculus" # or 'Homo sapiens' for mouse
-genome = "mm10" # or hg38 for mouse
-version = "M14" # or 27 for mouse
+species = "Homo sapiens" # or 'Mus musculus' for mouse
+genome = "hg19" # or hg38 or mm10 for mouse
+version = "19" # or 27 or M14 for mouse
 ```
-
-## To-Do
-
-  - Merge annotation and track plots
-  - Add the option for differential track colours/fills
-  - Improve the annotation (e.g., mark UTRs and coding/non-coding genes)
-
-## Setup
-
-```{r sessionInfo, echo=FALSE}
-cat(sessionInfo()$R.version$version.string, fill=TRUE)
-cat(paste("Platform", sessionInfo()$platform), fill=TRUE)
-cat(paste("Running under", sessionInfo()$running), fill=TRUE)
-cat(paste("Last knitted on", date()), fill=TRUE)
-cat(paste("Working directory set to", getwd()), fill=TRUE)
-cat(paste("Species: ", species), fill=TRUE)
-cat(paste("Genome assembly:", genome), fill=TRUE)
-cat(paste("Gencode version:", version), fill=TRUE)
-```
-
-If any of the information above does not suit your needs, please review it in the 'setup' chunk  and re-run the script.
 
 ```{r loadPackages, message=FALSE, results="hide"}
 require("ggplot2")
@@ -52,251 +116,71 @@ require("data.table")
 require("GenomicFeatures")
 require("rtracklayer")
 require("zoo")
+
+require("Kvasir")
 ```
 
-### Case study
-
-A region of ~90Kb covering the Xist gene locus is here used as example.
-
-```{r example}
-region = GRanges("chrX", IRanges(103410303, 103509084))
-region.pl = as.data.table(region)
-
-minimal.unit = width(region)/100
+```{r setup}
+species = "Homo sapiens" # or 'Mus musculus' for mouse
+genome = "hg19" # or hg38 or mm10 for mouse
+version = "19" # or 27 or M14 for mouse
 ```
 
-## Gencode Annotation (GFF3)
+If any of the information above does not suit your needs, please review it in the 'setup' chunk.
+
+### Gencode Annotation (GFF3)
 
 If it not not present in the working folder, the pipeline will download the __Comprehensive gene annotation__ from Gencode and create a local database.
 
 ```{r downloadGencode, results="hide", message=FALSE, warning=FALSE}
-getTxDb <- function(species, genome, version){
-   if( species %in% "Homo sapiens" ){
-      if( !file.exists(paste0("gencode.v", version, ".annotation.gff3.gz")) )
-         download.file(paste0("ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_human/release_", version, "/gencode.v", version, ".annotation.gff3.gz"),
-                       paste0("gencode.v", version, ".annotation.gff3.gz"), quiet = TRUE)
-   }else{
-      if( !file.exists(paste0("gencode.v", version, ".annotation.gff3.gz")) )
-         download.file(paste0("ftp://ftp.sanger.ac.uk/pub/gencode/Gencode_mouse/release_", version, "/gencode.v", version, ".annotation.gff3.gz"),
-                       paste0("gencode.v", version, ".annotation.gff3.gz"), quiet = TRUE)
-   }
-   
-   if( !file.exists(paste0("gencode.v", version, ".annotation.sqlite")) ){
-      TxDb = makeTxDbFromGFF(file = paste0("gencode.v", version, ".annotation.gff3.gz"),
-                             format = "gff3",
-                             dataSource = paste("Gencode version", version),
-                             organism = species)
-      saveDb(TxDb, file=paste0("gencode.v", version, ".annotation.sqlite"))
-   }
-   return(loadDb(paste0("gencode.v", version, ".annotation.sqlite")))
+if( require("TxDb.Hsapiens.UCSC.hg19.knownGene") ){
+   TxDb = TxDb.Hsapiens.UCSC.hg19.knownGene
+}else{
+   TxDb = getTxDb(species, genome, version)
 }
-
-TxDb = getTxDb(species, genome, version)
 ```
 
-## Annotation track
+### Annotation track
 
 Genic and exonic features are extracted from the database, ranked by size (larger on top) and distributed over different levels to prevent overlaps.
 
 ```{r setGeneLevels}
-createAnnoTrack <- function(TxDb=NULL, region, min.unit=100, species, genome, version){
+region = GRanges("chr14", IRanges(50027696, 50277302))
 
-   message("Check the annotation...")
-   if( is.null(TxDb) ){
-      message("Annotation not found. Download GFF...")
-      TxDb = getTxDb(species, genome, version)
-   }
-   
-   message("Extract features...")
-   genes = genes(TxDb)
-   genes = genes[!grepl("PAR", names(genes)),]
-   
-   exons = exonsBy(TxDb, by="gene")
-   exons = exons[!grepl("PAR", names(exons)),]
-   
-   genes = genes[overlapsAny(genes, region),]
-   
-   genes = genes[order(width(genes), decreasing=TRUE),]
-   
-   exons = reduce(exons[names(exons)%in%names(genes)], min.gapwidth=min.unit/10)
-   
-   message("Apply layering...")
-   genes$Y = as.numeric(NA)
-   exons = lapply(exons,
-                  function(x){
-                     x$Y = as.numeric(NA);
-                     x
-                  })
-   
-   if( !identical(names(genes), names(exons)) )
-      exons = exons[match(names(genes), names(exons))]
-   
-   overlaps = as.data.table(findOverlaps(genes, ignore.strand=TRUE))[!queryHits==subjectHits,]
-   
-   level = 0 
-   genes[which(!seq_along(exons)%in%overlaps[, queryHits]),]$Y = level
-   for( i in which(!seq_along(exons)%in%overlaps[, queryHits]) )
-      exons[[i]]$Y = level 
-   
-   while( nrow(overlaps)>0 ){
-      temp = copy(overlaps)
-      temp = split(temp, temp[,queryHits])
-      
-      for( i in names(temp) ){
-         if( i%in%names(temp) ){
-            temp = temp[!names(temp)%in%as.character(temp[[i]][, subjectHits])]
-         }
-      }
-      genes[as.numeric(names(temp)),]$Y = level
-      for( i in as.numeric(names(temp)) )
-         exons[[i]]$Y = level
-      
-      overlaps = overlaps[!queryHits%in%as.numeric(names(temp)),]
-      level = level-0.25
-   }
-   
-   message("Create track data...")
-   myList = list()
-   myList[["Genes"]] = data.table(as.data.frame(genes), key="gene_id")
-   myList[["Exons"]] = rbindlist(lapply(exons, as.data.table), idcol="gene")
-   
-   arrows.pl = genes[width(genes)>min.unit,]
-   arrows.pl = split(arrows.pl, names(arrows.pl))
-   arrows.pl = lapply(arrows.pl, function(x) data.table(as.data.frame(tile(x, width=min.unit))))
-   arrows.pl = rbindlist(arrows.pl, idcol="gene_id")
-   setkey(arrows.pl, gene_id)
-   myList[["Arrows"]] = arrows.pl[myList[["Genes"]], Y := i.Y]
-   
-   myList[["Genes"]] = myList[["Genes"]][!is.na(Y)]
-   myList[["Exons"]] = myList[["Exons"]][!is.na(Y)]
-   myList[["Arrows"]] = myList[["Arrows"]][!is.na(Y)]
-   
-   message("Done")
-   return(myList)
-}
-
-anno.pl = createAnnoTrack(TxDb, region, min.unit=minimal.unit, species, genome, version)
-```
-
-```{r blankTheme}
-theme_blank <- function(...) {
-  ret <- theme_bw(...)
-  ret$line <- element_blank()
-  ret$rect <- element_blank()
-  ret$strip.text <- element_blank()
-  ret$axis.text <- element_blank()
-  ret$plot.title <- element_blank()
-  ret$axis.title <- element_blank()
-  # ret$plot.margin <- structure(c(0, 0, -1, -1), unit = "lines", valid.unit = 3L, class = "unit")
-  ret
-}
+anno.pl = createAnnoTrack(TxDb, region, min.unit=width(region)/100, species)
 ```
 
 ```{r}
-plotanno <- function(data=list(), reg.range=NULL, gene.height = 1, colorVar="grey30", clean=FALSE){
-   plot <- ggplot() +
-      geom_segment(data=data[["Arrows"]][strand=="+"], mapping=aes(x=start, xend=end, y=Y, yend=Y), colour=colorVar, arrow = arrow(length = unit(0.1, "cm"), type="closed")) +
-      geom_segment(data=data[["Arrows"]][strand=="-"], mapping=aes(x=end, xend=start, y=Y, yend=Y), colour=colorVar, arrow = arrow(length = unit(0.1, "cm"), type="closed")) +
-      geom_segment(data=data[["Genes"]], mapping=aes(x=start, xend=start, y=Y-(0.05*gene.height)/2, yend=Y+(0.05*gene.height)/2), colour=colorVar, lineend="square") +
-      geom_segment(data=data[["Genes"]], mapping=aes(x=end,   xend=end,   y=Y-(0.05*gene.height)/2, yend=Y+(0.05*gene.height)/2), colour=colorVar, lineend="square") + 
-      geom_rect(data=data[["Exons"]], mapping=aes(xmin=start, xmax=end, ymin=Y-(0.05*gene.height), ymax=Y+(0.05*gene.height), fill=as.factor(1))) +
-      coord_cartesian(xlim=reg.range) +
-      scale_fill_tableau() + scale_colour_tableau() +
-      theme_few() + theme(axis.title.x=element_blank(), axis.text.y=element_blank(), axis.title.y=element_blank(), axis.ticks.y=element_blank()) + guides(fill=FALSE, colour=FALSE) 
-   if( clean )
-      plot = plot + theme_blank()
-   print(plot)
-   return(plot)
-}
+region.pl = as.data.table(region)
 
-png("img/annotation_track.png", res=300, units="in", width=16, height=4)
-   pl = plotanno(anno.pl, range(region.pl[, list(start, end)]))
+pl = plotAnno(anno.pl, range(region.pl[, list(start, end)]), addID=TRUE)
+```
+
+```{r, echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+png("img/annotation_track.png", res=300, units="in", width=12, height=3)
+   pl
 dev.off()
 ```
 
-#### Figure 1: Annotation track visualisation
+![Figure 1: Annotation track visualisation](img/annotation_track.png)
 
-![](img/annotation_track.png)
+```{r, results="hide", message=FALSE, warning=FALSE}
+require("GenomicAlignments")
+require("RNAseqData.HNRNPC.bam.chr14")
 
+bamfiles = RNAseqData.HNRNPC.bam.chr14_BAMFILES[1:2]
+param = ScanBamParam(tag="NM")
+galp = lapply(bamfiles, function(x) suppressWarnings(readGAlignmentPairs(x, use.names=TRUE, param=param)))
 
-```{r checkList}
-checkList <- function(x){
-  if(!is.list(x)){ stop("The object is not a list()", call.=FALSE); return(1) }
-  tmp = unique(sapply(x, class))
-  if(length(tmp)>1){ stop("Please provide a either a character or GRanges list", call.=FALSE); return(1) }
-  return(tmp)
-}
+ggl = createTracks(galp, region=region, use.smooth=FALSE)
+
+ggl = plot_grid(plotlist=c(ggl, list(pl)), nrow=length(ggl)+1, axis="lr", align="v", rel_heights=c(rep((1-0.25)/length(ggl), length(ggl)), 0.25))
 ```
 
-```{r}
-files = "/Users/agostif/Downloads/Kcnq1ot1_fin.25K_Control.bed"
-
-createTracks <- function(x, track.names=NULL, region, use.smooth=TRUE, win.smooth=1001){
-   
-   bed = checkList(x)
-
-   bed = x
-
-   message("Subset the GRanges...")
-   bed = lapply(bed,
-                function(x)
-                   subsetByOverlaps(x, resize(region, width(region)+2.5e3, fix="center")))
-   message("Calculate coverage...")
-   bed = lapply(bed,
-                function(x)
-                   data.table(as.data.frame(coverage(x))))
-   for( i in seq_along(bed) ){
-      bed[[i]][, `:=`(index = seq_along(value), group=NULL, group_name=NULL)]
-      setkey(bed[[i]], index)
-   }
-   
-   message("Add pseudo-count...")
-   reg = data.table(as.data.frame(coverage(resize(region, width(region)+2.5e3, fix="center"))))
-   reg[, `:=`(index = seq_along(value), group=NULL, group_name=NULL)]
-   setkey(reg, index)
-   
-   bed = lapply(bed,
-                function(x)
-                   x[reg,][, value := sum(value, i.value, na.rm=TRUE), by="index"][, i.value := NULL])
-   
-   message("Apply smooth function...")
-   bed = lapply(bed, 
-                function(x){
-                   if( use.smooth ){
-                      x[, smooth := rollmean(value-1, k = win.smooth, fill = NA)]
-                   }else{
-                      x[, smooth := value-1]
-                   }
-                   x = x[index>=start(region) & index<=end(region)]
-                   
-                   x[, i.next :=  data.table::shift(smooth, type="lag")]
-                   x[, i.prev :=  data.table::shift(smooth, type="lead")]
-                   x = x[smooth!=i.next | smooth!=i.prev | is.na(i.next) | is.na(i.prev)]
-                   x[, `:=`(i.next=NULL, i.prev=NULL)]
-                })
-   message("Remove pseudo-count...")
-   
-   names(bed) = track.names
-   
-   message("Create plot tracks...")
-   ggl = lapply(seq_along(bed),
-                function(x)
-                   ggplot(bed[[x]], aes(x=index, y=smooth)) +
-                   geom_area(alpha=0.8, aes(fill=as.factor(1))) +
-                   scale_y_continuous("Average coverage") +
-                   coord_cartesian(xlim=range(as.data.table(region)[, list(start, end)])) +
-                   scale_colour_solarized("red") +
-                   annotate("text", x = Inf, y = Inf, label = names(bed)[[i]], hjust = 2, vjust = 3, parse = TRUE) + 
-                   theme_few() + theme(axis.text.x=element_blank(), axis.title.x=element_blank(), axis.ticks.x=element_blank()) + guides(fill=FALSE, colour=FALSE)
-                )
-   
-   # print(plot_grid(plotlist=ggl, nrow=length(ggl), axis="lr", align="v", rel_heights=rep(1,length(ggl))))
-   
-   message("Done")
-   return(ggl)
-}
-
-# ggl = createTracks(files, region, use.smooth=FALSE)
-
-# plot_grid(plotlist=c(ggl, pl), nrow=length(ggl)+1, axis="lr", align="v", rel_heights=c(rep(1, length(ggl)), 0.3))
+```{r, echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+png("img/all_tracks.png", res=300, units="in", width=12, height=6)
+   ggl
+dev.off()
 ```
+
+![Figure 2: Annotation track visualisation](img/all_tracks.png)
