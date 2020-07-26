@@ -11,8 +11,8 @@
 #' SeqInfo = getChrSizes("mm10")
 
 getChrSizes <- function(genome){
-	info = as.data.table(fetchExtendedChromInfoFromUCSC(genome))
-	info = info[, list(UCSC_seqlevel, UCSC_seqlength, circular)]
-	info = with(info, Seqinfo(seqnames=UCSC_seqlevel, seqlengths=UCSC_seqlength, isCircular=circular, genome=genome))
+	info = as.data.table(getChromInfoFromUCSC(genome))
+	info = info[, .(chrom, size, circular)]
+	info = with(info, Seqinfo(seqnames=chrom, seqlengths=size, isCircular=circular, genome=genome))
 	return(info)
 }

@@ -4,19 +4,27 @@
 \alias{createAnnoTrack}
 \title{Create annotation track function}
 \usage{
-createAnnoTrack(TxDb = NULL, region, min.unit = 100, species = NULL,
-  version = NULL)
+createAnnoTrack(
+  TxDb = NULL,
+  region,
+  min.unit = 100,
+  species = NULL,
+  genome = NULL,
+  version = NULL
+)
 }
 \arguments{
 \item{TxDb}{A TxDb object.}
 
-\item{region}{A single GRanges object entry defining the genomic region to visualise.}
+\item{region}{A GRanges object with a single entry defining the genomic region to visualise.}
 
 \item{min.unit}{An integer used to calculate the 'unit': width(region)/min.unit; the default is 100.}
 
 \item{species}{[Optional] A character indicating either "Homo sapiens" or "Mus musculus". This is used only if the TxDb object is not provided.}
 
-\item{version}{[Optional] A character specifying the annotation version (e.g., "27" or "M16"). This is used only if the TxDb object is not provided.}
+\item{genome}{[Optional] A character indicating the genome assembly (e.g. "hg19", "hg38" or "mm10"). This is used only if the TxDb object is not provided.}
+
+\item{version}{[Optional] A character specifying the annotation version (e.g. "27" or "M16"). This is used only if the TxDb object is not provided.}
 }
 \value{
 A three-levels list containing the information to plot the track.
@@ -25,5 +33,7 @@ A three-levels list containing the information to plot the track.
 The function extracts the annotated features from the TxDb object and distributes them on different plotting layers to prevent overlaps.
 }
 \examples{
-anno = createAnnoTrack(TxDb, region, min.unit=minimal.unit, species, version)
+TxDb = getTxDb("Homo sapiens", "hg19", "19", keep=FALSE)
+
+anno = createAnnoTrack(TxDb, region=GRanges("chr14", IRanges(50027696, 50277302)))
 }

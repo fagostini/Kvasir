@@ -1,43 +1,65 @@
 #' Plot annotation track function
 #' 
 #' The function extracts the annotated features from the TxDb object and distributes them on different plotting layers to prevent overlaps. 
-#' @param data A List object (the output of createAnnoTrack() ).
-#' @param reg.range A vector of two integers, which define start and end for the plot left- and right-most borders.
-#' @param gene.height A positive numeric value used as a multiplying factor for the gene height; the default is 1.
-#' @param colorVar A character string indicating the colour of the gene lines/arrows; the default is grey.
-#' @param clean A logical indicating whether to plot the frame around the annotation track.
+#' @param dataList A List object containing either files that can be read using the import function from rtracklayer or a list of GRanges, GAlignments, or GAlignmentPairs objects.
+#' @param track.names A character vector of the same length as dataList containing the name to assign to each track.
+#' @param region A GRanges object with a single entry defining the genomic region to visualise.
+#' @param normalise A logical indicating whether to normalise the input data. Currently, only counts per million (CPM) normalisation is available.
+#' @param use.smooth A logical indicating whether to apply a smoothing function (rolling mean of win.smooth window size).
+#' @param win.smooth An positive integer defining the width of the window to use for the smoothing.
 #' @return A ggplot object.
 #'
+#' @import rtracklayer
 #' @import ggplot2
 #' @import ggthemes
 #' @import cowplot
 #' @export
-#' @examples
-#' pl = plotanno(anno.pl, range(region.pl[, list(start, end)]))
 
-createTracks <- function(x, track.names=NULL, region, use.smooth=TRUE, win.smooth=1001){
+createTracks <- function(dataList, track.names=NULL, region, normalise=FALSE, use.smooth=TRUE, win.smooth=1001){
    
-   bed = checkList(x)
+   bed = checkList(dataList)
 
-   if( bed %in% "GRanges" ){
-      bed = x
+   if( !is.null(track.names) )
+      stopifnot( length(dataList) == length(track.names) )
+
+   if( bed %in% c("GRanges", "GAlignments", "GAlignmentPairs") ){
+      bed = dataList
    }else{
-      bed = lapply(x, rtracklayer::import)
+      bed = lapply(dataList, rtracklayer::import)
+   }
+
+   if( normalise==TRUE ){
+      message("Extracting library sizes...")
+      if( "score"%in%colnames(mcols(bed[[1]])) ){
+         message("Using 'score' column for size and coverage calcualtion...")
+         sf = lapply(bed, function(x) sum(x$score))
+      }else{
+         sf = lapply(bed, function(x) length)
+      }
    }
 
    message("Subset the GRanges...")
    bed = lapply(bed,
                 function(x)
                    subsetByOverlaps(x, resize(region, width(region)+2.5e3, fix="center")))
+
    for( i in seq_along(bed) ){
       seqinfo(bed[[i]]) = seqinfo(TxDb)[seqnames(seqinfo(bed[[i]])),] 
       bed[[i]] = keepSeqlevels(bed[[i]], value=seqlevels(region))
    }
 
    message("Calculate coverage...")
-   bed = lapply(bed,
-                function(x){
-                   temp = ifelse(use.smooth, runmean(coverage(x), win.smooth), coverage(x))
+   bed = lapply(seq_along(bed),
+                function(i){
+                  if( "score"%in%colnames(mcols(bed[[1]])) ){
+                     temp = coverage(bed[[i]], weight=bed[[i]]$score)
+                  }else{
+                     temp = coverage(bed[[i]])
+                  }
+                   if( normalise==TRUE )
+                     temp = temp/sf[[i]]*1e6
+                   if( use.smooth==TRUE )
+                      temp = runmean(temp, win.smooth)
                    data.table(as.data.frame(temp[region]))
    })
 
@@ -103,5 +125,3 @@ createTracks <- function(x, track.names=NULL, region, use.smooth=TRUE, win.smoot
    message("Done")
    return(ggl)
 }
-
-# ggl = createTracks(files, region, use.smooth=FALSE)

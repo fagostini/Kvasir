@@ -4,7 +4,7 @@
 \alias{getTxDb}
 \title{Create TxDb object function}
 \usage{
-getTxDb(species, genome, version)
+getTxDb(species, genome, version, keep = TRUE)
 }
 \arguments{
 \item{species}{A character indicating either "Homo sapiens" or "Mus musculus".}
@@ -12,6 +12,8 @@ getTxDb(species, genome, version)
 \item{genome}{A character indicating either "Homo sapiens" or "Mus musculus".}
 
 \item{version}{A character specifying the annotation version (e.g., "27" or "M16").}
+
+\item{keep}{A logical specifying whether to keep the downloaded GFF3 file. Default is FALSE.}
 }
 \value{
 A TxDb object.
@@ -20,6 +22,6 @@ A TxDb object.
 The function checks if local versions of Gencode annotation GFF3 and the associated Txdb exist, otherwise it dowloads the required file and create the object.
 }
 \examples{
-TxDb = getTxDb("Homo sapiens", "27")
-TxDb = getTxDb("Mus musculus", "M16")
+TxDb = getTxDb("Homo sapiens", "hg38", "27", keep=FALSE)
+TxDb = getTxDb("Mus musculus", "mm10", "M16", keep=FALSE)
 }
